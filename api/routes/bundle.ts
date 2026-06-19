@@ -36,11 +36,33 @@ interface CalculateRequest {
   products: Product[]
 }
 
-function generateCombinations<T>(arr: T[], minSize: number, maxSize: number): T[][] {
+const MAX_COMBINATIONS = 100
+
+function binomial(n: number, k: number): number {
+  if (k < 0 || k > n) return 0
+  if (k === 0 || k === n) return 1
+  k = Math.min(k, n - k)
+  let result = 1
+  for (let i = 1; i <= k; i++) {
+    result = result * (n - k + i) / i
+  }
+  return Math.floor(result)
+}
+
+function countCombinations(n: number, minSize: number, maxSize: number): number {
+  let total = 0
+  for (let k = minSize; k <= maxSize; k++) {
+    total += binomial(n, k)
+  }
+  return total
+}
+
+function generateCombinations<T>(arr: T[], minSize: number, maxSize: number, maxResult: number = MAX_COMBINATIONS): T[][] {
   const result: T[][] = []
   const n = arr.length
 
   function backtrack(start: number, current: T[]) {
+    if (result.length >= maxResult) return
     if (current.length >= minSize && current.length <= maxSize) {
       result.push([...current])
     }
@@ -50,6 +72,7 @@ function generateCombinations<T>(arr: T[], minSize: number, maxSize: number): T[
       current.push(arr[i])
       backtrack(i + 1, current)
       current.pop()
+      if (result.length >= maxResult) return
     }
   }
 
@@ -91,7 +114,7 @@ function calculateBundleMetrics(items: BundleItem[]) {
   const totalCost = items.reduce((sum, item) => sum + item.cost, 0)
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0)
   const totalProfit = totalPrice - totalCost
-  const avgProfitMargin = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0
+  const avgProfitMargin = totalPrice > 0 ? (totalProfit / totalPrice) * 100 : 0
 
   return {
     totalCost: Number(totalCost.toFixed(2)),
@@ -122,7 +145,10 @@ router.post('/calculate', (req: Request, res: Response) => {
     }
 
     const minSize = Math.min(2, validProducts.length)
-    const maxSize = Math.min(5, validProducts.length)
+    let maxSize = Math.min(5, validProducts.length)
+    while (maxSize > minSize && countCombinations(validProducts.length, minSize, maxSize) > MAX_COMBINATIONS) {
+      maxSize--
+    }
 
     const combinations = generateCombinations(validProducts, minSize, maxSize)
 
@@ -135,8 +161,8 @@ router.post('/calculate', (req: Request, res: Response) => {
         price: product.price,
         profit: Number((product.price - product.cost).toFixed(2)),
         profitMargin: Number(
-          product.cost > 0
-            ? (((product.price - product.cost) / product.cost) * 100).toFixed(2)
+          product.price > 0
+            ? (((product.price - product.cost) / product.price) * 100).toFixed(2)
             : '0'
         ),
       }))

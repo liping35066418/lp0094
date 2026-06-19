@@ -53,12 +53,15 @@ const defaultProducts: Product[] = [
   { id: '8', name: '树脂摆件', category: '摆件', cost: 18, price: 42 },
 ]
 
+const PAGE_SIZE = 50
+
 export default function Home() {
   const [products, setProducts] = useState<Product[]>(defaultProducts)
   const [bundles, setBundles] = useState<Bundle[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(false)
   const [filterTier, setFilterTier] = useState<'all' | 'high' | 'medium' | 'low'>('all')
+  const [showAll, setShowAll] = useState(false)
 
   const calculateBundles = useCallback(async () => {
     const validProducts = products.filter(p => p.cost > 0 && p.price > 0 && p.name.trim())
@@ -94,6 +97,10 @@ export default function Home() {
     return () => clearTimeout(timer)
   }, [calculateBundles])
 
+  useEffect(() => {
+    setShowAll(false)
+  }, [bundles, filterTier])
+
   const updateProduct = (id: string, field: keyof Product, value: string | number) => {
     setProducts(prev =>
       prev.map(p =>
@@ -117,6 +124,8 @@ export default function Home() {
   const filteredBundles = filterTier === 'all'
     ? bundles
     : bundles.filter(b => b.tier === filterTier)
+
+  const displayedBundles = showAll ? filteredBundles : filteredBundles.slice(0, PAGE_SIZE)
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -298,7 +307,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {filteredBundles.map((bundle, index) => (
+                      {displayedBundles.map((bundle, index) => (
                         <tr key={bundle.id} className={getRowBg(bundle.tier)}>
                           <td className="px-4 py-3">
                             <span className={cn(
@@ -366,8 +375,18 @@ export default function Home() {
 
               <div className="px-6 py-4 bg-slate-50 border-t border-slate-100">
                 <div className="flex items-center justify-between text-sm text-slate-500">
-                  <span>共 {filteredBundles.length} 个组合方案</span>
-                  <span>按毛利从高到低排序</span>
+                  <span>共 {filteredBundles.length} 个组合方案{!showAll && filteredBundles.length > PAGE_SIZE ? `，当前显示前 ${PAGE_SIZE} 个` : ''}</span>
+                  <div className="flex items-center gap-3">
+                    {filteredBundles.length > PAGE_SIZE && (
+                      <button
+                        onClick={() => setShowAll(!showAll)}
+                        className="text-indigo-600 hover:text-indigo-700 font-medium"
+                      >
+                        {showAll ? '收起' : '展开全部'}
+                      </button>
+                    )}
+                    <span>按毛利从高到低排序</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -424,7 +443,7 @@ function ProductCard({
   canRemove: boolean
 }) {
   const profit = product.price - product.cost
-  const profitRate = product.cost > 0 ? ((product.price - product.cost) / product.cost) * 100 : 0
+  const profitRate = product.price > 0 ? ((product.price - product.cost) / product.price) * 100 : 0
 
   return (
     <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 hover:border-slate-200 transition-colors">
@@ -499,7 +518,7 @@ function ProductCard({
         <span className="text-slate-500">毛利率</span>
         <span className={cn(
           "font-medium",
-          profitRate > 50 ? 'text-emerald-600' : profitRate > 20 ? 'text-amber-600' : 'text-slate-400'
+          profitRate > 50 ? 'text-emerald-600' : profitRate > 30 ? 'text-amber-600' : 'text-slate-400'
         )}>
           {profitRate.toFixed(1)}%
         </span>
