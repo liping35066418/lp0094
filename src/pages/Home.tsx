@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, TrendingUp, TrendingDown, Minus, RefreshCw, Package, DollarSign, Percent, Sparkles } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Plus, Trash2, TrendingUp, TrendingDown, Minus, RefreshCw, Package, DollarSign, Percent, Sparkles, Target, ArrowUp, ArrowDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Product {
@@ -62,6 +62,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [filterTier, setFilterTier] = useState<'all' | 'high' | 'medium' | 'low'>('all')
   const [showAll, setShowAll] = useState(false)
+  const [targetMargin, setTargetMargin] = useState<number>(50)
 
   const calculateBundles = useCallback(async () => {
     const validProducts = products.filter(p => p.cost > 0 && p.price > 0 && p.name.trim())
@@ -127,6 +128,36 @@ export default function Home() {
 
   const displayedBundles = showAll ? filteredBundles : filteredBundles.slice(0, PAGE_SIZE)
 
+  const filteredStats = useMemo(() => {
+    if (filteredBundles.length === 0) {
+      return {
+        totalBundles: 0,
+        highProfitCount: 0,
+        lowProfitCount: 0,
+        highestProfit: 0,
+        lowestProfit: 0,
+      }
+    }
+    const sorted = [...filteredBundles].sort((a, b) => b.totalProfit - a.totalProfit)
+    return {
+      totalBundles: filteredBundles.length,
+      highProfitCount: filteredBundles.filter(b => b.tier === 'high').length,
+      lowProfitCount: filteredBundles.filter(b => b.tier === 'low').length,
+      highestProfit: sorted[0].totalProfit,
+      lowestProfit: sorted[sorted.length - 1].totalProfit,
+    }
+  }, [filteredBundles])
+
+  const calculateSuggestedPrice = (totalCost: number): number => {
+    if (targetMargin <= 0) return totalCost
+    if (targetMargin >= 100) return totalCost * 100
+    return Number((totalCost / (1 - targetMargin / 100)).toFixed(2))
+  }
+
+  const isBundle达标 = (bundle: Bundle): boolean => {
+    return bundle.avgProfitMargin >= targetMargin
+  }
+
   const getTierColor = (tier: string) => {
     switch (tier) {
       case 'high': return 'text-emerald-600 bg-emerald-50 border-emerald-200'
@@ -182,25 +213,25 @@ export default function Home() {
             <StatCard
               icon={<Package className="w-5 h-5" />}
               label="组合方案数"
-              value={stats.totalBundles.toString()}
+              value={filteredStats.totalBundles.toString()}
               color="indigo"
             />
             <StatCard
               icon={<TrendingUp className="w-5 h-5" />}
               label="高收益组合"
-              value={stats.highProfitCount.toString()}
+              value={filteredStats.highProfitCount.toString()}
               color="emerald"
             />
             <StatCard
               icon={<TrendingDown className="w-5 h-5" />}
               label="低收益组合"
-              value={stats.lowProfitCount.toString()}
+              value={filteredStats.lowProfitCount.toString()}
               color="rose"
             />
             <StatCard
               icon={<DollarSign className="w-5 h-5" />}
               label="最高毛利"
-              value={`¥${stats.highestProfit.toFixed(2)}`}
+              value={`¥${filteredStats.highestProfit.toFixed(2)}`}
               color="amber"
             />
           </div>
@@ -243,8 +274,24 @@ export default function Home() {
 
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-                <h2 className="font-semibold text-slate-800">组合收益对比</h2>
+              <div className="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <h2 className="font-semibold text-slate-800">组合收益对比</h2>
+                  <div className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-200">
+                    <Target className="w-4 h-4 text-indigo-500" />
+                    <span className="text-sm text-slate-600">目标毛利率</span>
+                    <input
+                      type="number"
+                      value={targetMargin}
+                      onChange={e => setTargetMargin(Number(e.target.value))}
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      className="w-16 bg-white border border-slate-300 rounded px-2 py-0.5 text-sm text-slate-700 text-right outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"
+                    />
+                    <span className="text-sm text-slate-500">%</span>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   {(['all', 'high', 'medium', 'low'] as const).map(tier => (
                     <button
@@ -301,73 +348,105 @@ export default function Home() {
                         <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                           毛利率
                         </th>
+                        <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          建议整套售价
+                        </th>
                         <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                           等级
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {displayedBundles.map((bundle, index) => (
-                        <tr key={bundle.id} className={getRowBg(bundle.tier)}>
-                          <td className="px-4 py-3">
-                            <span className={cn(
-                              "inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold",
-                              index === 0 ? 'bg-amber-100 text-amber-700' :
-                              index === 1 ? 'bg-slate-200 text-slate-600' :
-                              index === 2 ? 'bg-orange-100 text-orange-600' :
-                              'bg-slate-100 text-slate-500'
-                            )}>
-                              {index + 1}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium text-slate-800">{bundle.name}</div>
-                            <div className="text-xs text-slate-400">{bundle.itemCount} 件商品</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
-                              {bundle.items.map((item, i) => (
-                                <span
-                                  key={i}
-                                  className="inline-block px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded"
-                                >
-                                  {item.productName}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-600">
-                            ¥{bundle.totalCost.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-800 font-medium">
-                            ¥{bundle.totalPrice.toFixed(2)}
-                          </td>
-                          <td className={cn(
-                            "px-4 py-3 text-right font-semibold",
-                            bundle.tier === 'high' ? 'text-emerald-600' :
-                            bundle.tier === 'low' ? 'text-rose-600' : 'text-slate-700'
+                      {displayedBundles.map((bundle, index) => {
+                        const meetsTarget = isBundle达标(bundle)
+                        const suggestedPrice = calculateSuggestedPrice(bundle.totalCost)
+                        const priceDiff = bundle.totalPrice - suggestedPrice
+                        return (
+                          <tr key={bundle.id} className={cn(
+                            meetsTarget ? getRowBg(bundle.tier) : 'bg-slate-100/50 hover:bg-slate-100 opacity-60'
                           )}>
-                            ¥{bundle.totalProfit.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Percent className="w-3 h-3 text-slate-400" />
-                              <span className="text-slate-600">{bundle.avgProfitMargin.toFixed(1)}%</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={cn(
-                              "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border",
-                              getTierColor(bundle.tier)
+                            <td className="px-4 py-3">
+                              <span className={cn(
+                                "inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold",
+                                index === 0 ? 'bg-amber-100 text-amber-700' :
+                                index === 1 ? 'bg-slate-200 text-slate-600' :
+                                index === 2 ? 'bg-orange-100 text-orange-600' :
+                                'bg-slate-100 text-slate-500'
+                              )}>
+                                {index + 1}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium text-slate-800">{bundle.name}</div>
+                                {!meetsTarget && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-600">
+                                    未达标
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-400">{bundle.itemCount} 件商品</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-wrap gap-1">
+                                {bundle.items.map((item, i) => (
+                                  <span
+                                    key={i}
+                                    className="inline-block px-2 py-0.5 text-xs bg-slate-100 text-slate-600 rounded"
+                                  >
+                                    {item.productName}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">
+                              ¥{bundle.totalCost.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-800 font-medium">
+                              ¥{bundle.totalPrice.toFixed(2)}
+                            </td>
+                            <td className={cn(
+                              "px-4 py-3 text-right font-semibold",
+                              bundle.tier === 'high' ? 'text-emerald-600' :
+                              bundle.tier === 'low' ? 'text-rose-600' : 'text-slate-700'
                             )}>
-                              {bundle.tier === 'high' && <TrendingUp className="w-3 h-3" />}
-                              {bundle.tier === 'low' && <TrendingDown className="w-3 h-3" />}
-                              {bundle.tier === 'medium' && <Minus className="w-3 h-3" />}
-                              {getTierLabel(bundle.tier)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                              ¥{bundle.totalProfit.toFixed(2)}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Percent className="w-3 h-3 text-slate-400" />
+                                <span className="text-slate-600">{bundle.avgProfitMargin.toFixed(1)}%</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="text-slate-800 font-medium">¥{suggestedPrice.toFixed(2)}</div>
+                              <div className={cn(
+                                "text-xs flex items-center justify-end gap-0.5 mt-0.5",
+                                priceDiff > 0 ? 'text-emerald-600' : priceDiff < 0 ? 'text-rose-600' : 'text-slate-400'
+                              )}>
+                                {priceDiff > 0 ? (
+                                  <><ArrowUp className="w-3 h-3" /> 高 ¥{priceDiff.toFixed(2)}</>
+                                ) : priceDiff < 0 ? (
+                                  <><ArrowDown className="w-3 h-3" /> 低 ¥{Math.abs(priceDiff).toFixed(2)}</>
+                                ) : (
+                                  '与现价持平'
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={cn(
+                                "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border",
+                                getTierColor(bundle.tier)
+                              )}>
+                                {bundle.tier === 'high' && <TrendingUp className="w-3 h-3" />}
+                                {bundle.tier === 'low' && <TrendingDown className="w-3 h-3" />}
+                                {bundle.tier === 'medium' && <Minus className="w-3 h-3" />}
+                                {getTierLabel(bundle.tier)}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
